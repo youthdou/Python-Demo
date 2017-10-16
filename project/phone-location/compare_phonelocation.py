@@ -63,11 +63,11 @@ def queryNumber(strNumber):
     result['QueryResult'] = 'False'
     with lock:
         global iMaxCnt
-        if iMaxCnt > 100:
-            iMaxCnt = iMaxCnt + 1
+        iMaxCnt = iMaxCnt + 1
+        if iMaxCnt > 500:
             return result
 
-    time.sleep(2)
+    #time.sleep(2)
     url = 'http://v.showji.com/Locating/showji.com2016234999234.aspx?m=%s&output=json&callback=querycallback&timestamp=%d' % (strNumber, time.time())
     r = requests.get(url)
     #print(r.url)
@@ -78,7 +78,7 @@ def queryNumber(strNumber):
         result = eval(r.text.lstrip('querycallback(').rstrip(');'))
     else:
         print('[%d]%s' % (iMaxCnt, r.url))
-        return queryNumberV2(strNumber)
+        #return queryNumberV2(strNumber)
     #for key in result:
     #    print('%s:%s' % (key, result[key]))
     return result
@@ -212,7 +212,7 @@ if __name__ == '__main__':
     file = open('/mnt/hgfs/Share/log-%d.csv' % (time.time(),), 'w')
     file.write('type,number,excel,db\n')
 
-    data = xlrd.open_workbook('phonelocation.xlsx')
+    data = xlrd.open_workbook('/mnt/hgfs/Share/phonelocation.xlsx')
     #data = xlrd.open_workbook('/mnt/hgfs/Share/test.xlsx')
     table = data.sheets()[0]
     print('Total Excel Rows: ', table.nrows)
