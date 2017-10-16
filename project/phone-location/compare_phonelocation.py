@@ -13,11 +13,22 @@ import random
 import time
 import multiprocessing
 
+import csv
+import os
+import shutil
+
 bRunning = True
 
 iMaxCnt = 0
 
 lock = threading.Lock()
+
+
+def get_proxy():
+    return requests.get("http://127.0.0.1:5010/get/").text
+
+def delete_proxy(proxy):
+    requests.get("http://127.0.0.1:5010/delete/?proxy={}".format(proxy))
 
 def queryNumberV2(strNumber):
     url = 'http://www.ip138.com:8080/search.asp?action=mobile&mobile=%s' % (strNumber)
@@ -61,26 +72,45 @@ def queryNumberV2(strNumber):
 def queryNumber(strNumber):
     result = {}
     result['QueryResult'] = 'False'
+
+
+    iIndex = 0
     with lock:
         global iMaxCnt
         iMaxCnt = iMaxCnt + 1
-        if iMaxCnt > 500:
+        iIndex = iMaxCnt
+        '''
+        if iMaxCnt > 100:
             return result
+        else:
+            strMsg = '[%s:%d]' % (threading.current_thread().name, iMaxCnt)
+            print(strMsg)
+        '''
 
     #time.sleep(2)
     url = 'http://v.showji.com/Locating/showji.com2016234999234.aspx?m=%s&output=json&callback=querycallback&timestamp=%d' % (strNumber, time.time())
-    r = requests.get(url)
-    #print(r.url)
-    #print(r.text)
-    #print(r.status_code)
+    retry_count = 5
+    proxy = get_proxy()
+    while retry_count > 0:
+        try:
+            r = requests.get(url, proxies={"http": "http://{}".format(proxy)})
+            #print(r.url)
+            #print(r.text)
+            #print(r.status_code)
 
-    if r.text.strip().startswith('querycallback('):
-        result = eval(r.text.lstrip('querycallback(').rstrip(');'))
-    else:
-        print('[%d]%s' % (iMaxCnt, r.url))
-        #return queryNumberV2(strNumber)
-    #for key in result:
-    #    print('%s:%s' % (key, result[key]))
+            if r.text.strip().startswith('querycallback('):
+                result = eval(r.text.lstrip('querycallback(').rstrip(');'))
+            else:
+                print('[%s][%d]%s' % (threading.current_thread().name, iIndex, r.url))
+            #return queryNumberV2(strNumber)
+            #for key in result:
+            #    print('%s:%s' % (key, result[key]))
+            return result
+        except Exception:
+            retry_count -= 1
+
+    delete_proxy(proxy)
+    print('[%s][%d]%s' % (threading.current_thread().name, iIndex, url))
     return result
 
 
@@ -183,7 +213,13 @@ class Producer(threading.Thread):
                 self.outQ.put(insertRecord(strNumber, strInfos))
 
 
+def savAsCommonFile(strLogFile):
+    strCommoneFile = '/mnt/hgfs/Share/log.csv'
 
+    if os.path.exists(strCommoneFile):
+        os.remove(strCommoneFile)
+
+    shutil.copy(strLogFile, strCommoneFile)
 
 
 if __name__ == '__main__':
@@ -209,38 +245,51 @@ if __name__ == '__main__':
     values = cursor.fetchall()
     print('Total DB Rows: ', values[0][0])
 
-    file = open('/mnt/hgfs/Share/log-%d.csv' % (time.time(),), 'w')
+    strLogFileName = '/mnt/hgfs/Share/log-%d.csv' % (time.time(),)
+    file = open(strLogFileName, 'w')
     file.write('type,number,excel,db\n')
 
-    data = xlrd.open_workbook('/mnt/hgfs/Share/phonelocation.xlsx')
+    #data = xlrd.open_workbook('/mnt/hgfs/Share/phonelocation.xlsx')
     #data = xlrd.open_workbook('/mnt/hgfs/Share/test.xlsx')
-    table = data.sheets()[0]
-    print('Total Excel Rows: ', table.nrows)
+    #table = data.sheets()[0]
+    #print('Total Excel Rows: ', table.nrows)
 
-    for row in range(table.nrows):
+    #for row in range(table.nrows):
     #for row in range(1):
-        strNumber = table.cell(row, 0).value
-        strInfos = table.cell(row, 1).value.replace('★', '#').strip()
+        #strNumber = table.cell(row, 0).value
+        #strInfos = table.cell(row, 1).value.replace('★', '#').strip()
 
-        strSql = 'select province, city, isp from "T_PhoneLocation" where phone = "%s";' % (strNumber)
-        cursor.execute(strSql)
-        values = cursor.fetchall()
+    iCount = 0
+    with open('/mnt/hgfs/Share/log.csv', 'r') as f:
+        reader = csv.reader(f)
 
-        qData = [strNumber, strInfos, values]
+        for row in reader:
+            iCount += 1
+            strNumber = row[1]
+            strInfos = row[2]
 
-        inQ.put(qData)
+            #print("%s,%s" % (strNumber, strInfos))
 
-        '''
-        if len(values) != 0:
-            strDBInfos = "%s#%s#%s" % (values[0][0].strip(), values[0][1].strip(), values[0][2].strip())
-            if strDBInfos != strInfos:
-                #file.write(strNumber + ',' + strInfos + ',' + strDBInfos + '\n')
-                updateRecord(cursor, strNumber, strInfos, file)
-        else:
-            #file.write(strNumber + ',' + strInfos + ',\n')
-            insertRecord(cursor, strNumber, strInfos, file)
-        '''
+            strSql = 'select province, city, isp from "T_PhoneLocation" where phone = "%s";' % (strNumber)
+            cursor.execute(strSql)
+            values = cursor.fetchall()
 
+            qData = [strNumber, strInfos, values]
+
+            inQ.put(qData)
+
+            '''
+            if len(values) != 0:
+                strDBInfos = "%s#%s#%s" % (values[0][0].strip(), values[0][1].strip(), values[0][2].strip())
+                if strDBInfos != strInfos:
+                    #file.write(strNumber + ',' + strInfos + ',' + strDBInfos + '\n')
+                    updateRecord(cursor, strNumber, strInfos, file)
+            else:
+                #file.write(strNumber + ',' + strInfos + ',\n')
+                insertRecord(cursor, strNumber, strInfos, file)
+            '''
+
+    print('Remain: %d' % (iCount, ))
 
     while True:
         if inQ.empty():
@@ -278,4 +327,7 @@ if __name__ == '__main__':
     file.close()
     conn.commit()
     conn.close()
+
+    savAsCommonFile(strLogFileName)
+
     print('Run time: %fs' % (time.time() - startTime))
