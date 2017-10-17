@@ -16,19 +16,13 @@ import multiprocessing
 import csv
 import os
 import shutil
+import ProxyPoll
 
 bRunning = True
 
 iMaxCnt = 0
 
 lock = threading.Lock()
-
-
-def get_proxy():
-    return requests.get("http://127.0.0.1:5010/get/").text
-
-def delete_proxy(proxy):
-    requests.get("http://127.0.0.1:5010/delete/?proxy={}".format(proxy))
 
 def queryNumberV2(strNumber):
     url = 'http://www.ip138.com:8080/search.asp?action=mobile&mobile=%s' % (strNumber)
@@ -79,16 +73,40 @@ def queryNumber(strNumber):
         global iMaxCnt
         iMaxCnt = iMaxCnt + 1
         iIndex = iMaxCnt
-        '''
-        if iMaxCnt > 100:
+
+        if iMaxCnt > 1000:
             return result
+
+        '''
         else:
             strMsg = '[%s:%d]' % (threading.current_thread().name, iMaxCnt)
             print(strMsg)
         '''
 
     #time.sleep(2)
-    url = 'http://v.showji.com/Locating/showji.com2016234999234.aspx?m=%s&output=json&callback=querycallback&timestamp=%d' % (strNumber, time.time())
+    headers = {'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                              ' AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36')}
+
+    url = ('http://v.showji.com/Locating/showji.com2016234999234.aspx?'
+           'm=%s&output=json&callback=querycallback&timestamp=%d') % (strNumber, time.time())
+
+    '''
+    proxies = {}
+    with lock:
+        proxies=ProxyPoll.getProxy()
+    r = requests.get(url, proxies=proxies, headers=headers)
+    '''
+    r = requests.get(url, headers=headers)
+    if r.text.strip().startswith('querycallback('):
+        result = eval(r.text.lstrip('querycallback(').rstrip(');'))
+    else:
+        print('[%s][%d]%s' % (threading.current_thread().name, iIndex, r.url))
+        time.sleep(12)
+
+    return result
+
+
+    '''
     retry_count = 5
     proxy = get_proxy()
     while retry_count > 0:
@@ -112,6 +130,7 @@ def queryNumber(strNumber):
     delete_proxy(proxy)
     print('[%s][%d]%s' % (threading.current_thread().name, iIndex, url))
     return result
+    '''
 
 
 def getTypes(details):
@@ -186,6 +205,7 @@ class Producer(threading.Thread):
         self.inQ = inQ
         self.outQ = outQ
         threading.Thread.__init__(self, name=name)
+        self.iCnt = 0
 
     def run(self):
         while True:
@@ -199,6 +219,10 @@ class Producer(threading.Thread):
             strNumber = qData[0]
             strInfos = qData[1]
             values = qData[2]
+            self.iCnt += 1
+            if self.iCnt >= 15:
+                self.iCnt = 0
+                time.sleep(10)
             #strExcelInfos = "%s#%s" % (strInfos.split('#')[0], strInfos.split('#')[1])
             if len(values) != 0:
                 strDBInfos = "%s#%s#%s" % (
