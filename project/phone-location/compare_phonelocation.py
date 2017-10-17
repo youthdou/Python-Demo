@@ -16,7 +16,7 @@ import multiprocessing
 import csv
 import os
 import shutil
-import ProxyPoll
+import ProxyPool
 
 bRunning = True
 
@@ -101,7 +101,7 @@ def queryNumber(strNumber):
         result = eval(r.text.lstrip('querycallback(').rstrip(');'))
     else:
         print('[%s][%d]%s' % (threading.current_thread().name, iIndex, r.url))
-        time.sleep(12)
+        time.sleep(10)
 
     return result
 
@@ -205,7 +205,6 @@ class Producer(threading.Thread):
         self.inQ = inQ
         self.outQ = outQ
         threading.Thread.__init__(self, name=name)
-        self.iCnt = 0
 
     def run(self):
         while True:
@@ -219,10 +218,7 @@ class Producer(threading.Thread):
             strNumber = qData[0]
             strInfos = qData[1]
             values = qData[2]
-            self.iCnt += 1
-            if self.iCnt >= 15:
-                self.iCnt = 0
-                time.sleep(10)
+
             #strExcelInfos = "%s#%s" % (strInfos.split('#')[0], strInfos.split('#')[1])
             if len(values) != 0:
                 strDBInfos = "%s#%s#%s" % (
