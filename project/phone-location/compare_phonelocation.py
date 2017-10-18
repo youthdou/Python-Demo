@@ -17,12 +17,16 @@ import csv
 import os
 import shutil
 import ProxyPool
+import IPProxyPoolAPI
 
 bRunning = True
 
 iMaxCnt = 0
 
 lock = threading.Lock()
+
+inQ = queue.Queue()
+outQ = queue.Queue()
 
 def queryNumberV2(strNumber):
     url = 'http://www.ip138.com:8080/search.asp?action=mobile&mobile=%s' % (strNumber)
@@ -74,8 +78,10 @@ def queryNumber(strNumber):
         iMaxCnt = iMaxCnt + 1
         iIndex = iMaxCnt
 
-        if iMaxCnt > 1000:
+        '''
+        if iMaxCnt > 500:
             return result
+        '''
 
         '''
         else:
@@ -90,12 +96,33 @@ def queryNumber(strNumber):
     url = ('http://v.showji.com/Locating/showji.com2016234999234.aspx?'
            'm=%s&output=json&callback=querycallback&timestamp=%d') % (strNumber, time.time())
 
+
+    #url = 'http://v.showji.com/Locating/showji.com2016234999234.aspx?m=1701552&output=json&callback=querycallback&timestamp=1508289534'
+
     '''
     proxies = {}
     with lock:
-        proxies=ProxyPoll.getProxy()
-    r = requests.get(url, proxies=proxies, headers=headers)
+        #proxies = ProxyPool.getProxy()
+        proxies = IPProxyPoolAPI.getProxies()
     '''
+
+    proxies = IPProxyPoolAPI.getProxies()
+    try:
+        #print(threading.current_thread().name, ':', proxies)
+        r = requests.get(url, proxies=proxies, timeout=1)
+        if r.text.strip().startswith('querycallback('):
+            print('[%s][%d]Successful!' % (threading.current_thread().name, iIndex))
+            result = eval(r.text.lstrip('querycallback(').rstrip(');'))
+        else:
+            print('[%s][%d]%s' % (threading.current_thread().name, iIndex, r.url))
+    except Exception as e:
+        print(e)
+        print('[%s][%d]%s' % (threading.current_thread().name, iIndex, url))
+    finally:
+        return result
+
+    '''
+    
     r = requests.get(url, headers=headers)
     if r.text.strip().startswith('querycallback('):
         result = eval(r.text.lstrip('querycallback(').rstrip(');'))
@@ -104,7 +131,8 @@ def queryNumber(strNumber):
         time.sleep(10)
 
     return result
-
+    
+    '''
 
     '''
     retry_count = 5
@@ -142,6 +170,7 @@ def getTypes(details):
 
 def updateRecord(strNumber, strInfos):
     details = queryNumber(strNumber)
+    print(details)
     if details.get('QueryResult', 'False') == 'False':
         #file.write(strNumber + ',' + strInfos + ',\n')
         return (False, 'update,' + strNumber + ',' + strInfos + ',\n')
@@ -227,6 +256,7 @@ class Producer(threading.Thread):
                     if len(strInfos.split('#')) == 3:
                         #file.write(strNumber + ',' + strInfos + ',' + strDBInfos + '\n')
                         self.outQ.put(updateRecord(strNumber, strInfos))
+                        print("Size of self.outQ: ", self.outQ.qsize())
 
             else:
                 #file.write(strNumber + ',' + strInfos + ',\n')
@@ -241,14 +271,27 @@ def savAsCommonFile(strLogFile):
 
     shutil.copy(strLogFile, strCommoneFile)
 
+def processResult(ret, file, cursor):
+    print(ret[1])
+    if not ret[0]:
+        # print(ret[1])
+        file.write(ret[1])
+    else:
+        # print(ret[1])
+        try:
+            cursor.execute(ret[1])
+        except Exception as e:
+            print(e)
+
 
 if __name__ == '__main__':
     #queryNumber('1700529')
     #queryNumber('5700523')
 
     startTime = time.time()
-    inQ = queue.Queue()
-    outQ = queue.Queue()
+
+    #global inQ
+    #global outQ
 
     producerList = []
     for i in range(2):
@@ -261,7 +304,6 @@ if __name__ == '__main__':
     cursor = conn.cursor()
 
     cursor.execute('select count(*) from "T_PhoneLocation";')
-    #print("Total: " % (cursor[0][0],))
     values = cursor.fetchall()
     print('Total DB Rows: ', values[0][0])
 
@@ -285,6 +327,8 @@ if __name__ == '__main__':
 
         for row in reader:
             iCount += 1
+            if iCount == 1:
+                continue
             strNumber = row[1]
             strInfos = row[2]
 
@@ -309,40 +353,47 @@ if __name__ == '__main__':
                 insertRecord(cursor, strNumber, strInfos, file)
             '''
 
-    print('Remain: %d' % (iCount, ))
-
     while True:
         if inQ.empty():
+            time.sleep(5)
             with lock:
                 bRunning = False
                 break
-
+        #print("Size of OutQ: %d" % (outQ.qsize(),))
         if outQ.empty():
             continue
 
+        #print("Size of OutQ: %d" % (outQ.qsize(),))
         ret = outQ.get()
+        processResult(ret, file, cursor)
 
+    '''
         if not ret[0]:
             #print(ret[1])
             file.write(ret[1])
         else:
             #print(ret[1])
             cursor.execute(ret[1])
-
+    '''
 
     while not outQ.empty():
+        #print("Size of OutQ: %d" % (outQ.qsize(),))
         ret = outQ.get()
+        processResult(ret, file, cursor)
 
+    '''
         if not ret[0]:
             #print(ret[1])
             file.write(ret[1])
         else:
             #print(ret[1])
             cursor.execute(ret[1])
-
+    '''
 
     for producer in producerList:
         producer.join()
+
+    print('Remain: %d' % (iCount,))
 
     file.close()
     conn.commit()

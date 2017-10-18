@@ -12,7 +12,7 @@ print(r.text)
 '''
 
 def get_proxy():
-    return requests.get("http://127.0.0.1:5010/get/").content
+    return requests.get("http://127.0.0.1:5010/get/").text
 
 def delete_proxy(proxy):
     requests.get("http://127.0.0.1:5010/delete/?proxy={}".format(proxy))
@@ -35,5 +35,22 @@ def getHtml():
     delete_proxy(proxy)
     return None
 
-getHtml()
-getHtml()
+#getHtml()
+#getHtml()
+
+if __name__ == '__main__':
+    for i in range(40):
+        proxy = get_proxy()
+        try:
+            if len(proxy) == 0:
+                print('Empty: ', i)
+                continue
+            proxies = {"http": "http://{}".format(proxy)}
+            print(proxies)
+            r = requests.get('http://icanhazip.com',
+                             proxies=proxies, timeout=1)
+            print(r.text)
+        except Exception as e:
+            delete_proxy(proxy)
+            print("Failed: ", i)
+            pass
