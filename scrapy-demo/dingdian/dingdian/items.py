@@ -17,9 +17,9 @@ class DingdianItem(scrapy.Item):
 
     novelurl = scrapy.Field()
 
-    serialstatus = scrapy.Field()
+    #serialstatus = scrapy.Field()
 
-    serialnumber = scrapy.Field()
+    #serialnumber = scrapy.Field()
 
     category = scrapy.Field()
 

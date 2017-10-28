@@ -7,5 +7,10 @@
 
 
 class DingdianPipeline(object):
+    def print_item(self, item):
+        for field in item.fields:
+            print('[%s]%s' % (field, item[field]))
+
     def process_item(self, item, spider):
+        self.print_item(item)
         return item
