@@ -102,3 +102,4 @@ ENV/
 
 # .idea
 .idea/
+/learning/mongodb/config.json
